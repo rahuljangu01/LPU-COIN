@@ -3,7 +3,7 @@ import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
-// --- 1. ईमेल कॉन्फ़िगरेशन ---
+// --- 1. EMAIL CONFIGURATION ---
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   host: 'smtp.gmail.com',
@@ -15,60 +15,51 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// टोकन जनरेटर
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'lpu_coin_2024', { expiresIn: '7d' });
 };
 
-// --- 2. OTP जेनरेशन और डिस्पैच ---
-export const sendOTP = async (req, res) => {
+// --- 2. CHECK EMAIL AVAILABILITY (FIX: Added this missing function) ---
+export const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
-    console.log("📨 OTP Request for:", email);
-
-    if (!email) return res.status(400).json({ message: "Email is required" });
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // 1. OTP को डेटाबेस में सेव करें
-    try {
-      await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
-      console.log("✅ OTP saved to Database");
-    } catch (dbErr) {
-      console.error("❌ Database Error:", dbErr.message);
-      return res.status(500).json({ message: "Database connection busy" });
+    const userExists = await User.findOne({ email });
+    if (userExists) {
+      return res.status(400).json({ success: false, message: "IDENTITY ALREADY REGISTERED" });
     }
-
-    // 2. ईमेल भेजें
-    const mailOptions = {
-      from: '"LPU COIN Support" <rahuljangu01@gmail.com>',
-      to: email,
-      subject: 'LPU COIN - Identity Verification',
-      html: `
-        <div style="font-family: sans-serif; border: 2px solid #3b82f6; padding: 20px; border-radius: 10px;">
-          <h2 style="color: #1e40af;">LPU COIN ENROLLMENT</h2>
-          <p>Your verification code is:</p>
-          <div style="background: #f1f5f9; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px;">
-            ${otp}
-          </div>
-        </div>
-      `
-    };
-
-    await transporter.sendMail(mailOptions);
-    console.log("🚀 Email sent successfully to:", email);
-
-    res.status(200).json({ success: true, message: "OTP Dispatched to Gmail" });
-
+    res.status(200).json({ success: true, message: "Email Available" });
   } catch (error) {
-    console.error("🔥 SendOTP Error:", error.message);
-    res.status(500).json({ message: "Email service temporarily busy. Try again." });
+    res.status(500).json({ message: error.message });
   }
 };
 
-// ... baaki functions (login, register, etc.) jo aapke paas hain wo as it is rehne dein
-// bas dhyan rakhen ki unme 'password' plain text hi rahe jaisa aapne pehle maanga tha.
+// --- 3. SEND OTP ---
+export const sendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
 
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
+
+    await transporter.sendMail({
+      from: '"LPU COIN Support" <rahuljangu01@gmail.com>',
+      to: email,
+      subject: 'LPU COIN - Identity Verification',
+      html: `<div style="font-family:sans-serif;border:2px solid #3b82f6;padding:20px;border-radius:10px;">
+              <h2 style="color:#1e40af;">LPU COIN ENROLLMENT</h2>
+              <p>Your verification code is:</p>
+              <div style="background:#f1f5f9;padding:15px;text-align:center;font-size:24px;font-weight:bold;letter-spacing:5px;">${otp}</div>
+            </div>`
+    });
+
+    res.status(200).json({ success: true, message: "OTP Dispatched" });
+  } catch (error) {
+    res.status(500).json({ message: "Email service busy" });
+  }
+};
+
+// --- 4. FINAL REGISTRATION ---
 export const register = async (req, res) => {
   try {
     const { name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp } = req.body;
@@ -78,25 +69,23 @@ export const register = async (req, res) => {
     const user = await User.create({
       name, email, password,
       role: role || 'user',
-      collegeId: collegeId || "REG-PENDING",
+      collegeId: collegeId || "NOT-SET",
       phoneNumber: phoneNumber || "NOT-SET",
       faceDescriptor: faceDescriptor || []
     });
 
     await Otp.deleteOne({ _id: otpRecord._id });
-    const token = generateToken(user._id, user.role);
-    res.status(201).json({ success: true, token, user });
+    res.status(201).json({ success: true, token: generateToken(user._id, user.role), user });
   } catch (error) { res.status(400).json({ message: error.message }); }
 };
 
+// --- 5. LOGIN ---
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (email === 'admin@lpu.in' && password === 'Admin123') {
        let adminUser = await User.findOne({ email });
-       if (!adminUser) {
-         adminUser = await User.create({ name: 'ADMIN', email, password, role: 'admin' });
-       }
+       if (!adminUser) adminUser = await User.create({ name: 'ADMIN', email, password, role: 'admin' });
        return res.status(200).json({ success: true, token: generateToken(adminUser._id, 'admin'), user: adminUser });
     }
     const user = await User.findOne({ email });
@@ -105,6 +94,7 @@ export const login = async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
+// --- 6. OTHER REQUIRED EXPORTS ---
 export const getFaceData = async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
@@ -130,8 +120,8 @@ export const updateMe = async (req, res) => {
 export const forgotPassword = async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
-    if (!user) return res.status(404).json({ message: "Email not found" });
-    res.status(200).json({ success: true, message: "Reset link sent" });
+    if (!user) return res.status(404).json({ message: "Email not registered" });
+    res.status(200).json({ success: true, message: "Reset link dispatched" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
