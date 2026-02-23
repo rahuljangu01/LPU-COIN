@@ -48,7 +48,8 @@ export default function Login() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
       if (videoRef.current) videoRef.current.srcObject = stream;
 
-      const res = await axios.post('http://localhost:5000/api/auth/get-face-data', { email: formData.email });
+      const res = await axios.post('https://lpu-coin-backend.onrender.com/api/auth/get-face-data', { email: formData.email });
+
       const storedDescriptor = new Float32Array(res.data.faceDescriptor);
 
       setTimeout(async () => {

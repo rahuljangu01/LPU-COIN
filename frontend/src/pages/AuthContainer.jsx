@@ -70,10 +70,11 @@ export default function AuthContainer() {
         const detection = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
         if (detection) {
           if (isLogin) {
-            const res = await fetch('http://localhost:5000/api/auth/get-face-data', {
-              method: 'POST', headers: {'Content-Type': 'application/json'},
-              body: JSON.stringify({ email: formData.email })
-            });
+            const res = await fetch('https://lpu-coin-backend.onrender.com/api/auth/get-face-data', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ email: formData.email })
+                      });
             const data = await res.json();
             if(!res.ok) throw new Error(data.message);
             const dist = faceapi.euclideanDistance(detection.descriptor, new Float32Array(data.faceDescriptor));
@@ -93,8 +94,9 @@ export default function AuthContainer() {
   const handleSendOTP = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('http://localhost:5000/api/auth/send-otp', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
+      const res = await fetch('https://lpu-coin-backend.onrender.com/api/auth/send-otp', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ email: formData.email })
       });
       if (res.ok) setRegStep(2); else setError("Invalid Email");
