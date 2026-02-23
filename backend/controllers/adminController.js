@@ -3,6 +3,63 @@ import Transaction from '../models/Transaction.js';
 import SettlementRequest from '../models/SettlementRequest.js';
 import SystemWallet from '../models/SystemWallet.js';
 
+
+// =============================
+// 🔹 GET ALL USERS
+// =============================
+export const getAllUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password');
+    res.json({ success: true, users });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// =============================
+// 🔹 GET ALL TRANSACTIONS
+// =============================
+export const getAllTransactions = async (req, res) => {
+  try {
+    const transactions = await Transaction.find()
+      .populate('userId', 'name email collegeId')
+      .populate('merchantId', 'name email collegeId')
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, transactions });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// =============================
+// 🔹 GET SYSTEM WALLET
+// =============================
+export const getSystemWallet = async (req, res) => {
+  try {
+    let systemWallet = await SystemWallet.findOne();
+
+    if (!systemWallet) {
+      systemWallet = await SystemWallet.create({
+        totalCashReserve: 0,
+        totalCoinsInSystem: 0
+      });
+    }
+
+    res.json({ success: true, systemWallet });
+
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// =============================
+// 🔹 ADMIN DASHBOARD
+// =============================
 export const getAdminDashboard = async (req, res) => {
   try {
     const usersCount = await User.countDocuments({ role: 'user' });
@@ -34,6 +91,10 @@ export const getAdminDashboard = async (req, res) => {
   }
 };
 
+
+// =============================
+// 🔹 GET SETTLEMENT REQUESTS
+// =============================
 export const getSettlementRequests = async (req, res) => {
   try {
     const requests = await SettlementRequest
@@ -48,6 +109,10 @@ export const getSettlementRequests = async (req, res) => {
   }
 };
 
+
+// =============================
+// 🔹 APPROVE SETTLEMENT
+// =============================
 export const approveSettlement = async (req, res) => {
   try {
     const { settlementId } = req.params;
@@ -62,11 +127,9 @@ export const approveSettlement = async (req, res) => {
     if (!merchant || merchant.walletBalance < settlement.amount)
       return res.status(400).json({ message: 'Insufficient merchant balance' });
 
-    // Deduct LP from merchant
     merchant.walletBalance -= settlement.amount;
     await merchant.save();
 
-    // Burn LP from system
     const systemWallet = await SystemWallet.findOne();
     if (systemWallet) {
       systemWallet.totalCashReserve -= settlement.amount;
@@ -86,6 +149,10 @@ export const approveSettlement = async (req, res) => {
   }
 };
 
+
+// =============================
+// 🔹 REJECT SETTLEMENT
+// =============================
 export const rejectSettlement = async (req, res) => {
   try {
     const { settlementId } = req.params;
@@ -98,7 +165,7 @@ export const rejectSettlement = async (req, res) => {
       approvedAt: new Date()
     });
 
-    res.json({ success: true, message: 'Settlement Rejected' });
+    res.json({ success: true, message: 'Settlement Rejected ❌' });
 
   } catch (error) {
     res.status(500).json({ message: error.message });
