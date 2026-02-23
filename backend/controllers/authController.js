@@ -3,18 +3,18 @@ import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
-// --- 1. EMAIL CONFIGURATION (Optimized for Cloud) ---
+// --- 1. EMAIL CONFIGURATION (Cloud Optimized) ---
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   host: 'smtp.gmail.com',
   port: 587,
-  secure: false, // Must be false for 587
+  secure: false, 
   auth: {
     user: process.env.EMAIL_USER || 'rahuljangu01@gmail.com', 
     pass: process.env.EMAIL_PASS || 'htjsgoxpzvalgtth' 
   },
   tls: {
-    rejectUnauthorized: false // Helps connecting from cloud servers
+    rejectUnauthorized: false
   }
 });
 
@@ -22,7 +22,49 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'lpu_coin_2024', { expiresIn: '7d' });
 };
 
-// --- 2. CHECK EMAIL AVAILABILITY ---
+// --- 2. SEND OTP (Non-Blocking - FAST RESPONSE) ---
+export const sendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email is required" });
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // 🔥 STEP 1: OTP को तुरंत डेटाबेस में सेव करें (यह बहुत तेज़ है)
+    await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
+
+    // 🔥 STEP 2: फ्रंटएंड को तुरंत जवाब भेजें (User को इंतज़ार नहीं करना पड़ेगा)
+    res.status(200).json({ success: true, message: "OTP Dispatched" });
+
+    // 🔥 STEP 3: ईमेल पीछे (Background) में भेजें
+    const mailOptions = {
+      from: '"LPU COIN Official" <rahuljangu01@gmail.com>',
+      to: email,
+      subject: 'LPU COIN - Verification Code',
+      html: `<div style="font-family:sans-serif; border:2px solid #3b82f6; padding:20px; border-radius:10px; background:#f8fafc;">
+              <h2 style="color:#1e40af;">AUTHENTICATION PROTOCOL</h2>
+              <p style="color:#475569;">Your one-time security code for LPU COIN is:</p>
+              <div style="background:#1e293b; color:#3b82f6; padding:20px; text-align:center; font-size:32px; font-weight:bold; letter-spacing:8px; border-radius:8px;">${otp}</div>
+              <p style="color:#64748b; font-size:11px; margin-top:20px;">This code is valid for 5 minutes. If you didn't request this, ignore this email.</p>
+            </div>`
+    };
+
+    // No 'await' here so it doesn't block the response
+    transporter.sendMail(mailOptions).then(() => {
+      console.log(`🚀 OTP Email successfully sent to: ${email}`);
+    }).catch((err) => {
+      console.error(`❌ Mailer Error for ${email}:`, err.message);
+    });
+
+  } catch (error) {
+    console.error("🔥 Global sendOTP Error:", error.message);
+    if (!res.headersSent) {
+      res.status(500).json({ message: "System busy. Retry in a moment." });
+    }
+  }
+};
+
+// --- 3. CHECK EMAIL ---
 export const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
@@ -32,47 +74,6 @@ export const checkEmail = async (req, res) => {
     }
     res.status(200).json({ success: true, message: "Email Available" });
   } catch (error) { res.status(500).json({ message: error.message }); }
-};
-
-// --- 3. SEND OTP (Optimized Logic) ---
-export const sendOTP = async (req, res) => {
-  try {
-    const { email } = req.body;
-    console.log("📨 Attempting OTP dispatch for:", email);
-
-    if (!email) return res.status(400).json({ message: "Email is required" });
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // DB Update
-    await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
-
-    const mailOptions = {
-      from: `"LPU COIN Official" <${process.env.EMAIL_USER || 'rahuljangu01@gmail.com'}>`,
-      to: email,
-      subject: 'LPU COIN - Identity Verification',
-      html: `
-        <div style="font-family:sans-serif; border:2px solid #3b82f6; padding:20px; border-radius:10px;">
-          <h2 style="color:#1e40af;">ENROLLMENT PROTOCOL</h2>
-          <p>Your one-time security code is:</p>
-          <div style="background:#f1f5f9; padding:15px; text-align:center; font-size:28px; font-weight:bold; letter-spacing:5px;">${otp}</div>
-          <p style="font-size:10px; color:gray; margin-top:20px;">Requested from LPU COIN Nexus Node.</p>
-        </div>`
-    };
-
-    // 🔥 Fix: Send response immediately to stop "Pending" on frontend
-    // Email sending happens in the background
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) console.log("📧 Mailer Error:", error.message);
-      else console.log("🚀 Email Dispatched Successfully!");
-    });
-
-    return res.status(200).json({ success: true, message: "OTP Dispatched to Gmail" });
-
-  } catch (error) {
-    console.error("🔥 Global sendOTP Error:", error.message);
-    res.status(500).json({ message: "System busy, please retry in 30s" });
-  }
 };
 
 // --- 4. FINAL REGISTRATION ---
@@ -85,7 +86,7 @@ export const register = async (req, res) => {
     const user = await User.create({
       name, email, password,
       role: role || 'user',
-      collegeId: collegeId || "REG-PENDING",
+      collegeId: collegeId || "NOT-SET",
       phoneNumber: phoneNumber || "NOT-SET",
       faceDescriptor: faceDescriptor || []
     });
@@ -95,7 +96,7 @@ export const register = async (req, res) => {
   } catch (error) { res.status(400).json({ message: error.message }); }
 };
 
-// --- 5. LOGIN (Admin Bypass & Normal) ---
+// --- 5. LOGIN ---
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -110,7 +111,7 @@ export const login = async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
-// --- 6. FACE DATA & PROFILE ---
+// --- 6. BIOMETRICS & PROFILE ---
 export const getFaceData = async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
