@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
+// --- Centralized API Import ---
+import { authAPI } from '../services/api'; 
 import { AuthContext } from '../context/AuthContext';
 import { 
   Lock, Mail, User, ShieldCheck, ChevronRight, Fingerprint, 
@@ -27,7 +29,6 @@ export default function AuthContainer() {
   const { login, register, forgotPassword } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  // Using your local logo
   const LPU_LOGO = "/logo192.png";
 
   useEffect(() => {
@@ -70,16 +71,17 @@ export default function AuthContainer() {
         const detection = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
         if (detection) {
           if (isLogin) {
-            const res = await fetch('https://lpu-coin-backend.onrender.com/api/auth/get-face-data', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ email: formData.email })
-                      });
-            const data = await res.json();
-            if(!res.ok) throw new Error(data.message);
-            const dist = faceapi.euclideanDistance(detection.descriptor, new Float32Array(data.faceDescriptor));
-            if (dist < 0.6) { await login(formData.email, formData.password); stopCamera(); navigate('/'); }
-            else { setError("Identity Mismatch"); stopCamera(); }
+            // --- UPDATED: Using authAPI instead of hardcoded fetch ---
+            try {
+              const res = await authAPI.getFaceData(formData.email);
+              const data = res.data;
+              const dist = faceapi.euclideanDistance(detection.descriptor, new Float32Array(data.faceDescriptor));
+              if (dist < 0.6) { await login(formData.email, formData.password); stopCamera(); navigate('/'); }
+              else { setError("Identity Mismatch"); stopCamera(); }
+            } catch (err) {
+              setError(err.response?.data?.message || "Biometric Sync Failed");
+              stopCamera();
+            }
           } else {
             setFaceDescriptor(Array.from(detection.descriptor));
             stopCamera(); setRegStep(3);
@@ -94,19 +96,16 @@ export default function AuthContainer() {
   const handleSendOTP = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch('https://lpu-coin-backend.onrender.com/api/auth/send-otp', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ email: formData.email })
-      });
-      if (res.ok) setRegStep(2); else setError("Invalid Email");
+      // --- UPDATED: Using authAPI instead of hardcoded fetch ---
+      const res = await authAPI.sendOTP(formData.email);
+      if (res.status === 200) setRegStep(2); 
+      else setError("Invalid Email");
     } catch (e) { setError("Nexus Offline"); }
   };
 
   return (
     <div className="h-[100dvh] w-screen bg-[#010409] flex items-center justify-center p-6 overflow-hidden font-sans">
       
-      {/* Face Scan Overlay */}
       <AnimatePresence>
         {isScanning && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-xl">
@@ -119,16 +118,13 @@ export default function AuthContainer() {
         )}
       </AnimatePresence>
 
-      {/* --- ULTRA COMPACT RESPONSIVE CARD --- */}
       <div className="relative w-full max-w-[290px] md:max-w-[700px] md:h-[480px] bg-[#0d1117]/90 rounded-[2.5rem] md:rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col md:flex-row overflow-hidden z-10">
         
-        {/* MOBILE LOGO (Compact) */}
         <div className="md:hidden pt-8 pb-1 flex flex-col items-center justify-center">
            <img src={LPU_LOGO} className="h-5 mb-1 brightness-125" alt="LPU" />
            <h1 className="text-[9px] font-black italic text-white tracking-widest uppercase">LPU <span className="text-blue-500">COIN</span></h1>
         </div>
 
-        {/* --- LEFT: AUTH SECTION (Login) --- */}
         <div className={`w-full md:w-1/2 p-6 md:p-10 flex flex-col justify-center ${!isLogin && 'hidden md:flex'}`}>
             <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-6 md:mb-8 tracking-tighter text-center md:text-left leading-none">
               Sign <span className="text-blue-500">In</span>
@@ -151,12 +147,11 @@ export default function AuthContainer() {
             <div className="mt-4 text-center md:text-left">
               <button onClick={() => setShowForgotModal(true)} className="text-[7px] md:text-[8px] font-black text-slate-600 uppercase hover:text-blue-400 transition-colors">Forgot Access Protocol?</button>
               <div className="mt-6 md:hidden pt-4 border-t border-white/5 flex flex-col items-center">
-                <button onClick={() => setIsLogin(false)} className="text-blue-500 text-[8px] font-black uppercase tracking-widest">Enroll New Node <ChevronRight size={10} className="inline ml-1"/></button>
+                <button onClick={() => setIsLogin(false)} className="text-blue-500 text-[9px] font-black uppercase tracking-widest">Enroll New Node <ChevronRight size={10} className="inline ml-1"/></button>
               </div>
             </div>
         </div>
 
-        {/* --- RIGHT: ENROLL SECTION --- */}
         <div className={`w-full md:w-1/2 p-6 md:p-10 flex flex-col justify-center bg-[#0d1117] border-l border-white/5 ${isLogin && 'hidden md:flex'}`}>
             <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-4 md:mb-6 text-emerald-500 text-center md:text-left leading-none">
               En <span className="text-white font-normal">Roll</span>
@@ -170,13 +165,13 @@ export default function AuthContainer() {
                       <button onClick={()=>setFormData({...formData, role:'merchant'})} className={`flex-1 py-1.5 md:py-2 text-[8px] md:text-[9px] font-black uppercase rounded-md md:rounded-lg transition-all ${formData.role === 'merchant' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Vendor</button>
                    </div>
                    <form onSubmit={handleSendOTP} className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <input required placeholder={formData.role === 'user' ? "Full Name" : "Shop Name"} className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, name: e.target.value})} />
-                      <input required placeholder={formData.role === 'user' ? "Reg ID" : "Vendor ID"} className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 font-mono text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, collegeId: e.target.value})} />
+                      <input required placeholder={formData.role === 'user' ? "Full Name" : "Shop Name"} className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 uppercase text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, name: e.target.value})} />
+                      <input required placeholder={formData.role === 'user' ? "Reg ID" : "Vendor ID"} className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 uppercase font-mono text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, collegeId: e.target.value})} />
                       <input required placeholder="Mobile No." className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, phoneNumber: e.target.value})} />
                       <input required type="email" placeholder="Email Address" className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, email: e.target.value})} />
                       <button className="md:col-span-2 w-full bg-emerald-600 py-2.5 md:py-3 rounded-lg md:rounded-xl text-white font-black text-[8px] md:text-[9px] uppercase tracking-widest shadow-emerald-900/10 mt-1">Request OTP</button>
                    </form>
-                   <button onClick={() => setIsLogin(true)} className="md:hidden w-full text-slate-700 text-[8px] font-black uppercase underline mt-2 text-center">Existing Node? Sign In</button>
+                   <button onClick={() => setIsLogin(true)} className="md:hidden w-full text-slate-700 text-[8px] font-black uppercase underline mt-2 text-center">Back to Sign In</button>
                 </motion.div>
               )}
 
@@ -202,32 +197,22 @@ export default function AuthContainer() {
             </AnimatePresence>
         </div>
 
-        {/* --- DESKTOP SLIDER OVERLAY (Small Version) --- */}
-        <motion.div 
-          animate={{ x: isLogin ? '100%' : '0%' }}
-          transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-          className="hidden md:flex absolute top-0 left-0 w-1/2 h-full z-50 bg-[#0d1117] border-x border-[#30363d] flex flex-col items-center justify-center p-8 text-center shadow-2xl"
-        >
+        <motion.div animate={{ x: isLogin ? '100%' : '0%' }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} className="hidden md:flex absolute top-0 left-0 w-1/2 h-full z-50 bg-[#0d1117] border-x border-[#30363d] flex flex-col items-center justify-center p-8 text-center shadow-2xl">
            <motion.img animate={{ rotate: 360 }} transition={{ duration: 60, repeat: Infinity, ease: "linear" }} src={LPU_LOGO} className="w-20 h-auto mb-6 mix-blend-screen drop-shadow-[0_0_15px_rgba(59,130,246,0.2)]" />
            <h1 className="text-3xl font-black text-white tracking-tighter uppercase italic leading-none">LPU <span className="text-blue-500 font-normal">COIN</span></h1>
            <p className="text-[7px] text-slate-500 font-black uppercase tracking-[0.5em] mt-3 italic">Campus Economy Node</p>
-           
-           <button 
-             onClick={() => {setIsLogin(!isLogin); setRegStep(1); setError('');}} 
-             className="mt-10 px-8 py-3 border-2 border-white/5 rounded-full font-black text-[8px] uppercase text-white hover:border-blue-500/50 hover:bg-blue-600/5 transition-all active:scale-95 shadow-xl"
-           >
+           <button onClick={() => {setIsLogin(!isLogin); setRegStep(1); setError('');}} className="mt-10 px-8 py-3 border-2 border-white/5 rounded-full font-black text-[8px] uppercase text-white hover:border-blue-500/50 hover:bg-blue-600/5 transition-all active:scale-95 shadow-xl">
               {isLogin ? "Enroll Node" : "Access Hub"}
            </button>
         </motion.div>
       </div>
 
-      {/* Forgot Modal (Compact) */}
       <AnimatePresence>
         {showForgotModal && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-10 bg-black/95 backdrop-blur-md text-center">
             <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="bg-[#0d1117] border border-white/5 p-6 rounded-[2rem] w-full max-w-[240px] shadow-2xl">
               <Mail size={20} className="mx-auto mb-3 text-blue-500 opacity-60" />
-              <h3 className="text-[9px] font-black uppercase text-white mb-4 italic tracking-widest">System Recovery</h3>
+              <h3 className="text-[9px] font-black uppercase text-white mb-4 italic tracking-widest tracking-tighter">System Recovery</h3>
               <input type="email" placeholder="Email Address" className="bg-black/40 p-2.5 text-[9px] rounded-lg border border-white/10 text-white text-center w-full mb-4 outline-none focus:border-blue-500 tracking-[0.1em]" onChange={(e) => setResetEmail(e.target.value)} />
               <button onClick={handleForgotRequest} className="w-full bg-blue-600 py-2.5 rounded-lg text-white font-black text-[8px] uppercase tracking-widest shadow-lg">Request Key</button>
               <button onClick={() => setShowForgotModal(false)} className="mt-4 text-[7px] text-slate-700 font-black uppercase tracking-widest">Abort Protocol</button>
@@ -235,6 +220,7 @@ export default function AuthContainer() {
           </div>
         )}
       </AnimatePresence>
+      {error && <div className="fixed bottom-0 left-0 w-full bg-red-600 text-white text-[8px] font-black uppercase py-1.5 text-center tracking-[0.3em]">{error}</div>}
     </div>
   );
 }

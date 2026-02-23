@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
-import axios from 'axios';
+// Centralized API Import
+import { authAPI } from '../services/api'; 
 import { AuthContext } from '../context/AuthContext';
 import { 
   Lock, Mail, ChevronRight, Fingerprint, Sparkles, 
-  ScanFace, ShieldCheck, Loader2, AlertTriangle, X, RefreshCw 
+  ScanFace, ShieldCheck, Loader2, AlertTriangle, X 
 } from 'lucide-react';
 
 export default function Login() {
@@ -14,7 +15,6 @@ export default function Login() {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState('');
   
-  // Forgot Password States
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetStatus, setResetStatus] = useState({ type: '', msg: '' });
@@ -23,7 +23,6 @@ export default function Login() {
   const { login, forgotPassword } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  // Local Logo Path
   const LPU_LOGO = "/logo192.png";
 
   useEffect(() => {
@@ -33,7 +32,7 @@ export default function Login() {
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
         await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
         await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-        console.log("AI Models Linked ✅");
+        console.log("AI Systems Booted ✅");
       } catch (e) { console.error("AI Offline"); }
     };
     loadModels();
@@ -48,8 +47,8 @@ export default function Login() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
       if (videoRef.current) videoRef.current.srcObject = stream;
 
-      const res = await axios.post('https://lpu-coin-backend.onrender.com/api/auth/get-face-data', { email: formData.email });
-
+      // --- Use Centralized API (Automatically picks Render or Localhost) ---
+      const res = await authAPI.getFaceData(formData.email);
       const storedDescriptor = new Float32Array(res.data.faceDescriptor);
 
       setTimeout(async () => {
@@ -95,8 +94,6 @@ export default function Login() {
 
   return (
     <div className="h-[100dvh] w-screen bg-[#010409] flex items-center justify-center p-6 overflow-hidden font-sans">
-      
-      {/* Face Scan Overlay */}
       <AnimatePresence>
         {isScanning && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center backdrop-blur-xl">
@@ -109,24 +106,20 @@ export default function Login() {
         )}
       </AnimatePresence>
 
-      {/* Main Login Card */}
       <div className="relative w-full max-w-[290px] md:max-w-[700px] md:h-[460px] bg-[#0d1117]/90 rounded-[2.5rem] md:rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col md:flex-row overflow-hidden z-10">
-        
-        {/* Mobile Header Branding */}
         <div className="md:hidden pt-8 pb-1 flex flex-col items-center justify-center">
            <img src={LPU_LOGO} className="h-5 mb-1 brightness-125" alt="LPU" />
-           <h1 className="text-[9px] font-black italic text-white tracking-widest">LPU <span className="text-blue-500">COIN</span></h1>
+           <h1 className="text-[9px] font-black italic text-white tracking-widest uppercase">LPU <span className="text-blue-500">COIN</span></h1>
         </div>
 
-        {/* LEFT: Sign In Form */}
         <div className="w-full md:w-1/2 p-6 md:p-10 flex flex-col justify-center">
-          <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-6 md:mb-8 tracking-tighter text-center md:text-left">Sign <span className="text-blue-500">In</span></h2>
+          <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-6 md:mb-8 tracking-tighter text-center md:text-left leading-none">Sign <span className="text-blue-500">In</span></h2>
           <form onSubmit={handleLoginProcess} className="space-y-3 md:space-y-4">
-            <div className="relative flex items-center bg-black/40 border border-white/5 md:border-white/10 rounded-lg md:rounded-xl focus-within:border-blue-500/40 transition-all group">
+            <div className="relative flex items-center bg-black/40 border border-white/5 rounded-lg md:rounded-xl focus-within:border-blue-500/40 transition-all group">
               <Mail className="absolute left-3 md:left-4 text-slate-700 group-focus-within:text-blue-500" size={12}/>
               <input type="email" required className="w-full bg-transparent p-2.5 md:p-3 pl-9 md:pl-10 text-[9px] md:text-[10px] font-bold text-white outline-none placeholder:text-slate-700" placeholder="Email Address" onChange={(e)=>setFormData({...formData, email: e.target.value})} />
             </div>
-            <div className="relative flex items-center bg-black/40 border border-white/5 md:border-white/10 rounded-lg md:rounded-xl focus-within:border-blue-500/40 transition-all group">
+            <div className="relative flex items-center bg-black/40 border border-white/5 rounded-lg md:rounded-xl focus-within:border-blue-500/40 transition-all group">
               <Lock className="absolute left-3 md:left-4 text-slate-700 group-focus-within:text-blue-500" size={12}/>
               <input type="password" required className="w-full bg-transparent p-2.5 md:p-3 pl-9 md:pl-10 text-[9px] md:text-[10px] font-bold text-white outline-none placeholder:text-slate-700" placeholder="Security Key" onChange={(e)=>setFormData({...formData, password: e.target.value})} />
             </div>
@@ -138,7 +131,6 @@ export default function Login() {
           </div>
         </div>
 
-        {/* RIGHT: Desktop Branding Slider */}
         <div className="hidden md:flex w-1/2 h-full bg-[#0d1117] border-l border-white/5 flex-col items-center justify-center p-8 text-center relative overflow-hidden">
            <div className="absolute inset-0 bg-blue-600/5 blur-3xl rounded-full" />
            <motion.img animate={{ rotate: 360 }} transition={{ duration: 60, repeat: Infinity, ease: "linear" }} src={LPU_LOGO} className="w-20 h-auto mb-6 mix-blend-screen drop-shadow-xl" alt="LPU" />
@@ -148,7 +140,6 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Forgot Modal */}
       <AnimatePresence>
         {showForgotModal && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-10 bg-black/95 backdrop-blur-md text-center">
@@ -163,8 +154,6 @@ export default function Login() {
           </div>
         )}
       </AnimatePresence>
-
-      {/* Error Toast */}
       {error && <div className="fixed bottom-0 left-0 w-full bg-red-600 text-white text-[8px] font-black uppercase py-1.5 text-center tracking-[0.3em]">{error}</div>}
     </div>
   );

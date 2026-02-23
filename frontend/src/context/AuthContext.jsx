@@ -9,7 +9,10 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const API_URL = 'http://localhost:5000/api';
+  // --- SMART URL DETECTION ---
+  const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000/api'
+    : 'https://lpu-coin-backend.onrender.com/api'; // <--- Render wala URL
 
   useEffect(() => {
     if (token) {
@@ -19,31 +22,28 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]);
 
- // AuthContext.jsx में register फंक्शन अपडेट करें
-const register = async (name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp) => {
-  try {
-    setLoading(true);
-    const response = await axios.post(`${API_URL}/auth/register`, {
-      name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp // <--- otp यहाँ भेजा गया है
-    });
-    setToken(response.data.token);
-    setUser(response.data.user);
-    localStorage.setItem('token', response.data.token);
-    return response.data;
-  } catch (err) {
-    throw err;
-  } finally {
-    setLoading(false);
-  }
-};
+  const register = async (name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp) => {
+    try {
+      setLoading(true);
+      const response = await axios.post(`${API_URL}/auth/register`, {
+        name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp
+      });
+      setToken(response.data.token);
+      setUser(response.data.user);
+      localStorage.setItem('token', response.data.token);
+      return response.data;
+    } catch (err) {
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  // 2. लॉगिन
   const login = async (email, password) => {
     try {
       setLoading(true);
       const response = await axios.post(`${API_URL}/auth/login`, {
-        email,
-        password
+        email, password
       });
       setToken(response.data.token);
       setUser(response.data.user);
@@ -76,7 +76,7 @@ const register = async (name, email, password, role, collegeId, phoneNumber, fac
       if (err.response?.status === 401) logout();
       throw err;
     }
-  }, [token]);
+  }, [token, API_URL]); // API_URL added as dependency
 
   const updateMe = async (userData) => {
     try {
@@ -119,17 +119,7 @@ const register = async (name, email, password, role, collegeId, phoneNumber, fac
 
   return (
     <AuthContext.Provider value={{
-      user,
-      token,
-      loading,
-      error,
-      register,
-      login,
-      logout,
-      getMe,
-      updateMe,
-      changePassword,
-      forgotPassword
+      user, token, loading, error, register, login, logout, getMe, updateMe, changePassword, forgotPassword
     }}>
       {children}
     </AuthContext.Provider>
