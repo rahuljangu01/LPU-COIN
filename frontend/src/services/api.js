@@ -2,24 +2,40 @@ import axios from 'axios';
 
 /*
 ====================================================
-  🔥 LPU COIN - BULLETPROOF API CONFIG
+  🔥 LPU COIN - ULTIMATE API CONFIGURATION
 ====================================================
 */
 
+// 1. URLs Define karein
 const PROD_URL = 'https://lpu-coin-backend.onrender.com/api';
 const LOCAL_URL = 'http://localhost:5000/api';
 
-const API_URL = window.location.hostname === 'localhost' ? LOCAL_URL : PROD_URL;
+// 2. Smart Detection (Bulletproof logic)
+const getBaseURL = () => {
+  if (typeof window !== 'undefined') {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return LOCAL_URL;
+    }
+  }
+  return PROD_URL;
+};
 
+const API_URL = getBaseURL();
+
+// Debugging ke liye (Console mein dikhega ki kaunsa backend use ho raha hai)
+console.log(`🚀 Nexus System: Connecting to Backend at ${API_URL}`);
+
+// 3. Axios Instance Create karein
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000, // ⏳ 60 seconds (Render free tier needs this)
+  timeout: 60000, // ⏳ 60 seconds (Render free tier takes time to wake up)
   headers: {
     'Content-Type': 'application/json',
   }
 });
 
-// 🔐 Request Interceptor
+// 🔐 Request Interceptor: JWT Token automatically har request mein jud jayega
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -32,20 +48,21 @@ api.interceptors.request.use(
 );
 
 /* ====================================================
-   1️⃣ AUTH APIs
+   1️⃣ AUTHENTICATION APIs
 ==================================================== */
 export const authAPI = {
   getFaceData: (email) => api.post('/auth/get-face-data', { email }),
   sendOTP: (email) => api.post('/auth/send-otp', { email }),
-  updateMe: (userData) => api.put('/auth/update-me', userData),
-  changePassword: (data) => api.put('/auth/change-password', data),
+  register: (data) => api.post('/auth/register', data),
+  login: (data) => api.post('/auth/login', data),
   checkEmail: (email) => api.post('/auth/check-email', { email }),
+  updateMe: (userData) => api.put('/auth/update-me', userData),
   forgotPassword: (email) => api.post('/auth/forgot-password', { email }),
   getMerchantInfo: (id) => api.get(`/auth/merchant/${id}`),
 };
 
 /* ====================================================
-   2️⃣ WALLET APIs
+   2️⃣ WALLET & TRANSACTIONS APIs
 ==================================================== */
 export const walletAPI = {
   addMoney: (amount) => api.post('/wallet/add-money', { amount }),
@@ -55,7 +72,7 @@ export const walletAPI = {
 };
 
 /* ====================================================
-   3️⃣ MERCHANT APIs
+   3️⃣ MERCHANT TERMINAL APIs
 ==================================================== */
 export const merchantAPI = {
   generateQRCode: () => api.get('/merchant/qr-code'),
@@ -64,7 +81,7 @@ export const merchantAPI = {
 };
 
 /* ====================================================
-   4️⃣ ADMIN APIs
+   4️⃣ SYSTEM ADMIN APIs
 ==================================================== */
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
@@ -75,7 +92,7 @@ export const adminAPI = {
 };
 
 /* ====================================================
-   5️⃣ MESS APIs
+   5️⃣ CAMPUS MESS APIs
 ==================================================== */
 export const messAPI = {
   getMeals: () => api.get('/mess/all'),

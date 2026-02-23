@@ -14,16 +14,16 @@ dotenv.config();
 const app = express();
 
 /* ======================================================
-   🔐 THE ULTIMATE CORS FIX (Nexus Offline & Preflight)
+   🔐 THE ULTIMATE CORS FIX (Preflight & Options)
 ====================================================== */
 app.use(cors({
-  origin: true, // Sabhi origins allow karega
+  origin: true, // Sabhi origins allow karega (Vercel + Local)
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
 }));
 
-// Pre-flight OPTIONS handle karein (Bohot zaroori hai Render-Vercel ke liye)
+// Pre-flight OPTIONS handle karein (Bohot zaroori hai browser calls ke liye)
 app.options('*', cors());
 
 /* ======================================================
@@ -36,7 +36,6 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
    🗄️ MONGODB CONNECTION
 ====================================================== */
 const MONGO_URI = process.env.MONGODB_URI;
-
 mongoose.connect(MONGO_URI, { 
   serverSelectionTimeoutMS: 5000, 
   family: 4 
@@ -47,9 +46,8 @@ mongoose.connect(MONGO_URI, {
 /* ======================================================
    🚀 API ROUTES
 ====================================================== */
-// Health Check for Render
-app.get('/', (req, res) => res.status(200).send('🚀 System Operational and Active'));
-app.get('/api/health', (req, res) => res.status(200).json({ status: 'Online', timestamp: new Date() }));
+app.get('/', (req, res) => res.status(200).send('🚀 LPU COIN API IS LIVE'));
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'Nexus Online', timestamp: new Date() }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/wallet', walletRoutes);

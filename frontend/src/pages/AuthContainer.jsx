@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, Link } from 'react-router-dom';
 import * as faceapi from '@vladmandic/face-api';
-// Centralized API import to handle local vs production automatically
 import { authAPI } from '../services/api'; 
 import { AuthContext } from '../context/AuthContext';
 import { 
@@ -20,7 +19,6 @@ export default function AuthContainer() {
   const [faceDescriptor, setFaceDescriptor] = useState(null);
   const [modelsLoaded, setModelsLoaded] = useState(false);
 
-  // Forgot Password States
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetStatus, setResetStatus] = useState({ type: '', msg: '' });
@@ -30,51 +28,36 @@ export default function AuthContainer() {
   const { login, register, forgotPassword } = useContext(AuthContext);
   const navigate = useNavigate();
 
-  // Path to your downloaded logo in public folder
   const LPU_LOGO = "/logo192.png";
 
   useEffect(() => {
     const load = async () => {
       try {
         const URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api/model/';
-        await Promise.all([
-          faceapi.nets.ssdMobilenetv1.loadFromUri(URL), 
-          faceapi.nets.faceLandmark68Net.loadFromUri(URL), 
-          faceapi.nets.faceRecognitionNet.loadFromUri(URL)
-        ]);
+        await Promise.all([faceapi.nets.ssdMobilenetv1.loadFromUri(URL), faceapi.nets.faceLandmark68Net.loadFromUri(URL), faceapi.nets.faceRecognitionNet.loadFromUri(URL)]);
         setModelsLoaded(true);
-      } catch (e) { console.error("AI Systems Offline"); }
+      } catch (e) { console.log("AI Offline"); }
     };
     load();
   }, []);
 
   const handleLoginAttempt = async (e) => {
     e.preventDefault();
-    setError('');
-    // Special Admin Bypass
     if (formData.email === 'admin@lpu.in' && formData.password === 'Admin123') {
-       try {
-         await login(formData.email, formData.password);
-         navigate('/admin');
-         return;
-       } catch (err) { setError("ADMIN ACCESS DENIED"); return; }
+       await login(formData.email, formData.password);
+       navigate('/admin'); return;
     }
     handleBiometricAuth();
   };
 
   const handleForgotRequest = async (e) => {
     e.preventDefault();
-    setResetStatus({ type: 'loading', msg: 'VERIFYING...' });
+    setResetStatus({ type: 'loading', msg: 'Verifying...' });
     try {
       await forgotPassword(resetEmail);
-      setResetStatus({ type: 'success', msg: 'KEY DISPATCHED! ✅' });
-      setTimeout(() => {
-        setShowForgotModal(false);
-        setResetStatus({ type: '', msg: '' });
-      }, 2500);
-    } catch (err) {
-      setResetStatus({ type: 'error', msg: 'NOT FOUND' });
-    }
+      setResetStatus({ type: 'success', msg: 'Key Sent! ✅' });
+      setTimeout(() => setShowForgotModal(false), 2000);
+    } catch (err) { setResetStatus({ type: 'error', msg: 'Not Found' }); }
   };
 
   const handleBiometricAuth = async () => {
@@ -82,33 +65,23 @@ export default function AuthContainer() {
     setIsScanning(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: {} });
-      streamRef.current = stream;
-      videoRef.current.srcObject = stream;
+      streamRef.current = stream; videoRef.current.srcObject = stream;
       setTimeout(async () => {
         const detection = await faceapi.detectSingleFace(videoRef.current).withFaceLandmarks().withFaceDescriptor();
         if (detection) {
           if (isLogin) {
             try {
-              // Using Centralized API instead of hardcoded fetch
               const res = await authAPI.getFaceData(formData.email);
-              const data = res.data;
-              const dist = faceapi.euclideanDistance(detection.descriptor, new Float32Array(data.faceDescriptor));
-              if (dist < 0.6) { 
-                await login(formData.email, formData.password); 
-                stopCamera(); 
-                navigate('/'); 
-              } else { 
-                setError("IDENTITY MISMATCH"); 
-                stopCamera(); 
-              }
+              const dist = faceapi.euclideanDistance(detection.descriptor, new Float32Array(res.data.faceDescriptor));
+              if (dist < 0.6) { await login(formData.email, formData.password); stopCamera(); navigate('/'); }
+              else { setError("IDENTITY MISMATCH"); stopCamera(); }
             } catch (err) {
-              setError(err.response?.data?.message || "IDENTITY NOT REGISTERED");
+              setError(err.response?.data?.message || "IDENTITY NOT FOUND");
               stopCamera();
             }
           } else {
             setFaceDescriptor(Array.from(detection.descriptor));
-            stopScanner();
-            setRegStep(3);
+            stopCamera(); setRegStep(3);
           }
         } else { setError("NO FACE DETECTED"); stopCamera(); }
       }, 3000);
@@ -121,124 +94,108 @@ export default function AuthContainer() {
     e.preventDefault();
     setError('');
     try {
-      // Using Centralized API (handles Local vs Production)
       const res = await authAPI.sendOTP(formData.email);
       if (res.status === 200 || res.status === 201 || res.data.success) {
         setRegStep(2);
       }
     } catch (e) { 
-      console.error("OTP Error:", e);
-      const msg = e.response?.data?.message || "SERVER WAKING UP... RETRY IN 20s";
+      const msg = e.response?.data?.message || "SERVER BUSY... RETRY IN 15s";
       setError(msg); 
     }
   };
 
   return (
-    <div className="h-[100dvh] w-screen bg-[#010409] flex items-center justify-center p-6 overflow-hidden font-sans selection:bg-blue-500/30">
+    <div className="h-[100dvh] w-screen bg-[#010409] flex items-center justify-center p-6 overflow-hidden font-sans">
       
       {/* Face Scan Overlay */}
       <AnimatePresence>
         {isScanning && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center p-6 backdrop-blur-xl">
-            <div className="relative w-48 h-48 md:w-56 md:h-56 rounded-full border border-blue-500/30 overflow-hidden shadow-2xl">
+            <div className="relative w-48 h-48 rounded-full border border-blue-500/30 overflow-hidden">
                <video ref={videoRef} autoPlay muted className="w-full h-full object-cover scale-x-[-1]" />
                <motion.div animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 2, repeat: Infinity }} className="absolute w-full h-[1px] bg-blue-400 shadow-[0_0_15px_blue]" />
             </div>
-            <h2 className="text-white font-black tracking-widest mt-6 uppercase text-[8px] animate-pulse italic text-center leading-none">Scanning Node...</h2>
+            <h2 className="text-white font-black tracking-widest mt-6 uppercase text-[8px] animate-pulse italic">Scanning node...</h2>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* --- MAIN ULTRA COMPACT CARD --- */}
-      <div className="relative w-full max-w-[290px] md:max-w-[700px] md:h-[480px] bg-[#0d1117]/90 rounded-[2.5rem] md:rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col md:flex-row overflow-hidden z-10 shadow-black/90">
+      {/* --- RESPONSIVE CARD --- */}
+      <div className="relative w-full max-w-[290px] md:max-w-[720px] md:h-[500px] bg-[#0d1117]/90 rounded-[2.5rem] md:rounded-[3.5rem] border border-white/5 shadow-2xl flex flex-col md:flex-row overflow-hidden z-10">
         
-        {/* MOBILE LOGO */}
         <div className="md:hidden pt-8 pb-1 flex flex-col items-center justify-center">
            <img src={LPU_LOGO} className="h-5 mb-1 brightness-125" alt="LPU" />
-           <h1 className="text-[9px] font-black italic text-white tracking-widest uppercase leading-none">LPU <span className="text-blue-500">COIN</span></h1>
+           <h1 className="text-[9px] font-black italic text-white tracking-widest uppercase">LPU <span className="text-blue-500">COIN</span></h1>
         </div>
 
-        {/* LEFT: AUTH (SIGN IN) */}
+        {/* LEFT: AUTH SECTION */}
         <div className={`w-full md:w-1/2 p-6 md:p-10 flex flex-col justify-center ${!isLogin && 'hidden md:flex'}`}>
-            <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-6 md:mb-8 tracking-tighter text-center md:text-left leading-none">
-              Sign <span className="text-blue-500">In</span>
-            </h2>
-            
+            <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-6 md:mb-8 tracking-tighter text-center md:text-left leading-none">Sign <span className="text-blue-500">In</span></h2>
             <form onSubmit={handleLoginAttempt} className="space-y-3 md:space-y-4">
-              <div className="relative flex items-center bg-black/40 border border-white/5 md:border-white/10 rounded-lg md:rounded-xl focus-within:border-blue-500/40 transition-all group">
-                <Mail className="absolute left-3 md:left-4 text-slate-700 group-focus-within:text-blue-500" size={12}/>
-                <input required type="email" placeholder="Email Address" className="w-full bg-transparent p-2.5 md:p-3 pl-9 md:pl-10 text-[9px] md:text-[10px] font-bold text-white outline-none" onChange={(e)=>setFormData({...formData, email: e.target.value})} />
+              <div className="relative flex items-center bg-black/40 border border-white/5 md:border-white/10 rounded-lg focus-within:border-blue-500/40 transition-all">
+                <Mail className="absolute left-3 text-slate-700" size={12}/>
+                <input required type="email" placeholder="Email Address" className="w-full bg-transparent p-2.5 pl-9 text-[9px] font-bold text-white outline-none" onChange={(e)=>setFormData({...formData, email: e.target.value})} />
               </div>
-
-              <div className="relative flex items-center bg-black/40 border border-white/5 md:border-white/10 rounded-lg md:rounded-xl focus-within:border-blue-500/40 transition-all group">
-                <Lock className="absolute left-3 md:left-4 text-slate-700 group-focus-within:text-blue-500" size={12}/>
-                <input required type="password" placeholder="Security Key" className="w-full bg-transparent p-2.5 md:p-3 pl-9 md:pl-10 text-[9px] md:text-[10px] font-bold text-white outline-none" onChange={(e)=>setFormData({...formData, password: e.target.value})} />
+              <div className="relative flex items-center bg-black/40 border border-white/5 md:border-white/10 rounded-lg focus-within:border-blue-500/40 transition-all">
+                <Lock className="absolute left-3 text-slate-700" size={12}/>
+                <input required type="password" placeholder="Password" className="w-full bg-transparent p-2.5 pl-9 text-[9px] font-bold text-white outline-none" onChange={(e)=>setFormData({...formData, password: e.target.value})} />
               </div>
-
-              <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-2.5 md:py-3.5 rounded-lg md:rounded-xl text-[8px] md:text-[9px] uppercase tracking-[0.2em] shadow-lg transition-all mt-1">Authorize Access</button>
+              <button className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 rounded-lg text-[8px] uppercase tracking-widest shadow-lg">Authorize Access</button>
             </form>
-            
             <div className="mt-4 text-center md:text-left">
-              <button onClick={() => setShowForgotModal(true)} className="text-[7px] md:text-[8px] font-black text-slate-600 uppercase hover:text-blue-400 transition-colors">Forgot Access Protocol?</button>
+              <button onClick={() => setShowForgotModal(true)} className="text-[7px] text-slate-600 uppercase hover:text-blue-400">Forgot Password?</button>
               <div className="mt-6 md:hidden pt-4 border-t border-white/5 flex flex-col items-center">
-                <button onClick={() => setIsLogin(false)} className="text-blue-500 text-[9px] font-black uppercase tracking-widest">Enroll New Node <ChevronRight size={10} className="inline ml-1"/></button>
+                <button onClick={() => setIsLogin(false)} className="text-blue-500 text-[9px] font-black uppercase">Enroll Node <ChevronRight size={10} className="inline"/></button>
               </div>
             </div>
         </div>
 
-        {/* RIGHT: REGISTER (EN ROLL) */}
+        {/* RIGHT: REGISTER SECTION */}
         <div className={`w-full md:w-1/2 p-6 md:p-10 flex flex-col justify-center bg-[#0d1117] border-l border-white/5 ${isLogin && 'hidden md:flex'}`}>
-            <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-4 md:mb-6 text-emerald-500 text-center md:text-left leading-none">
-              En <span className="text-white font-normal">Roll</span>
-            </h2>
-            
+            <h2 className="text-sm md:text-2xl font-black text-white italic uppercase mb-4 text-emerald-500 text-center md:text-left">En <span className="text-white font-normal">Roll</span></h2>
             <AnimatePresence mode="wait">
               {regStep === 1 && (
-                <motion.div key="step1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
-                   <div className="flex bg-black/40 p-0.5 md:p-1 rounded-lg md:rounded-xl border border-white/5 mb-2">
-                      <button onClick={()=>setFormData({...formData, role:'user'})} className={`flex-1 py-1.5 md:py-2 text-[8px] md:text-[9px] font-black uppercase rounded-md md:rounded-lg transition-all ${formData.role === 'user' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Student</button>
-                      <button onClick={()=>setFormData({...formData, role:'merchant'})} className={`flex-1 py-1.5 md:py-2 text-[8px] md:text-[9px] font-black uppercase rounded-md md:rounded-lg transition-all ${formData.role === 'merchant' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Vendor</button>
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
+                   <div className="flex bg-black/40 p-0.5 rounded-lg border border-white/5 mb-2">
+                      <button onClick={()=>setFormData({...formData, role:'user'})} className={`flex-1 py-1.5 text-[8px] font-black uppercase rounded-md ${formData.role === 'user' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Student</button>
+                      <button onClick={()=>setFormData({...formData, role:'merchant'})} className={`flex-1 py-1.5 text-[8px] font-black uppercase rounded-md ${formData.role === 'merchant' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Vendor</button>
                    </div>
                    <form onSubmit={handleSendOTP} className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      <input required placeholder={formData.role === 'user' ? "Full Name" : "Shop Name"} className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, name: e.target.value})} />
-                      <input required placeholder={formData.role === 'user' ? "Reg ID" : "Vendor ID"} className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 font-mono text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, collegeId: e.target.value})} />
-                      <input required placeholder="Mobile No." className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, phoneNumber: e.target.value})} />
-                      <input required type="email" placeholder="Email ID" className="bg-black/20 p-2 md:p-2.5 text-[9px] rounded-lg border border-white/5 text-white outline-none focus:border-emerald-500/30" onChange={(e)=>setFormData({...formData, email: e.target.value})} />
-                      <button className="md:col-span-2 w-full bg-emerald-600 py-2.5 md:py-3 rounded-lg md:rounded-xl text-white font-black text-[8px] md:text-[9px] uppercase tracking-widest shadow-emerald-900/10 mt-1">Request OTP</button>
+                      <input required placeholder="Name" className="bg-black/20 p-2.5 text-[9px] rounded-lg border border-white/5 text-white" onChange={(e)=>setFormData({...formData, name: e.target.value})} />
+                      <input required placeholder="ID" className="bg-black/20 p-2.5 text-[9px] rounded-lg border border-white/5 font-mono text-white" onChange={(e)=>setFormData({...formData, collegeId: e.target.value})} />
+                      <input required placeholder="Mobile" className="bg-black/20 p-2.5 text-[9px] rounded-lg border border-white/5 text-white" onChange={(e)=>setFormData({...formData, phoneNumber: e.target.value})} />
+                      <input required type="email" placeholder="Email" className="bg-black/20 p-2.5 text-[9px] rounded-lg border border-white/5 text-white" onChange={(e)=>setFormData({...formData, email: e.target.value})} />
+                      <button className="md:col-span-2 w-full bg-emerald-600 py-3 rounded-lg text-white font-black text-[9px] uppercase tracking-widest">Request OTP</button>
                    </form>
-                   <button onClick={() => setIsLogin(true)} className="md:hidden w-full text-slate-700 text-[8px] font-black uppercase underline mt-2 text-center">Existing Node? Sign In</button>
+                   <button onClick={() => setIsLogin(true)} className="md:hidden w-full text-slate-700 text-[8px] font-black uppercase underline mt-2 text-center">Existing? Sign In</button>
                 </motion.div>
               )}
-
               {regStep === 2 && (
-                <motion.div key="step2" initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ opacity: 0 }} className="space-y-4 text-center py-2">
-                   <p className="text-[8px] text-slate-500 font-black uppercase tracking-[0.2em]">Enter Verification Code</p>
-                   <input required maxLength="6" placeholder="000000" className="text-center text-3xl font-black tracking-[0.4em] text-emerald-400 bg-transparent border-b border-emerald-500/30 rounded-none w-full focus:ring-0 focus:border-emerald-500 outline-none" onChange={(e)=>setFormData({...formData, otp: e.target.value})} />
-                   <button onClick={handleBiometricAuth} className="w-full bg-blue-600 py-3 rounded-lg text-white font-black text-[9px] uppercase tracking-widest shadow-lg">Verify & Scan Face</button>
-                   <button onClick={() => setRegStep(1)} className="text-[8px] text-slate-600 font-black uppercase underline">Change Details</button>
+                <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} className="space-y-4 text-center py-4">
+                   <p className="text-[8px] text-slate-500 font-black uppercase">Verification Code</p>
+                   <input required maxLength="6" placeholder="000000" className="text-center text-3xl font-black tracking-[0.4em] text-emerald-400 bg-transparent border-b border-emerald-500/30 rounded-none w-full outline-none focus:border-emerald-500" onChange={(e)=>setFormData({...formData, otp: e.target.value})} />
+                   <button onClick={handleBiometricAuth} className="w-full bg-blue-600 py-3 rounded-lg text-white font-black text-[9px] uppercase">Verify & Scan</button>
                 </motion.div>
               )}
-
               {regStep === 3 && (
                 <motion.form key="step3" initial={{ y: 10 }} animate={{ y: 0 }} onSubmit={async (e)=>{ e.preventDefault(); await register(formData.name, formData.email, formData.password, formData.role, formData.collegeId, formData.phoneNumber, faceDescriptor, formData.otp); navigate('/'); }} className="space-y-3 py-2 text-center">
                    <div className="bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/10 flex items-center justify-center gap-3">
                       <CheckCircle2 className="text-emerald-500" size={18} />
-                      <p className="text-[9px] font-black text-white uppercase tracking-tighter italic leading-none">Identity Secured</p>
+                      <p className="text-[9px] font-black text-white uppercase tracking-tighter italic">Identity Secured</p>
                    </div>
                    <input required type="password" placeholder="Create Security Key" className="bg-black/30 p-2.5 text-[9px] rounded-lg border border-white/5 text-white w-full outline-none focus:border-emerald-500" onChange={(e)=>setFormData({...formData, password: e.target.value})} />
-                   <button className="w-full bg-emerald-600 py-3 rounded-lg text-white font-black text-[9px] uppercase tracking-widest shadow-xl">Establish Nexus Identity</button>
+                   <button className="w-full bg-emerald-600 py-3 rounded-lg text-white font-black text-[9px] uppercase shadow-xl">Forge Identity</button>
                 </motion.form>
               )}
             </AnimatePresence>
         </div>
 
-        {/* DESKTOP SLIDER OVERLAY */}
+        {/* DESKTOP OVERLAY SLIDER */}
         <motion.div animate={{ x: isLogin ? '100%' : '0%' }} transition={{ type: 'spring', stiffness: 120, damping: 20 }} className="hidden md:flex absolute top-0 left-0 w-1/2 h-full z-50 bg-[#0d1117] border-x border-[#30363d] flex flex-col items-center justify-center p-8 text-center shadow-2xl">
            <motion.img animate={{ rotate: 360 }} transition={{ duration: 60, repeat: Infinity, ease: "linear" }} src={LPU_LOGO} className="w-20 h-auto mb-6 mix-blend-screen drop-shadow-xl" />
            <h1 className="text-3xl font-black text-white tracking-tighter uppercase italic leading-none">LPU <span className="text-blue-500 font-normal">COIN</span></h1>
-           <p className="text-[7px] text-slate-500 font-black uppercase tracking-[0.5em] mt-3 italic text-center leading-none">Campus Payment System</p>
-           <button onClick={() => {setIsLogin(!isLogin); setRegStep(1); setError('');}} className="mt-10 px-8 py-3 border-2 border-white/5 rounded-full font-black text-[8px] uppercase text-white hover:border-blue-500 hover:bg-blue-600/5 transition-all active:scale-95 shadow-xl">
-              {isLogin ? "Enroll Now" : "Login Now"}
+           <button onClick={() => {setIsLogin(!isLogin); setRegStep(1); setError('');}} className="mt-10 px-8 py-3 border-2 border-white/5 rounded-full font-black text-[8px] uppercase text-white hover:border-blue-500/50 hover:bg-blue-600/5 transition-all shadow-xl active:scale-95">
+              {isLogin ? "Enroll Node" : "Access Hub"}
            </button>
         </motion.div>
       </div>
@@ -257,7 +214,7 @@ export default function AuthContainer() {
           </div>
         )}
       </AnimatePresence>
-      {error && <div className="fixed bottom-0 left-0 w-full bg-red-600 text-white text-[8px] font-black uppercase py-1.5 text-center tracking-[0.3em] shadow-lg">{error}</div>}
+      {error && <div className="fixed bottom-0 left-0 w-full bg-red-600 text-white text-[8px] font-black uppercase py-1.5 text-center tracking-[0.3em]">{error}</div>}
     </div>
   );
 }
