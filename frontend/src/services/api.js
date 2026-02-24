@@ -1,12 +1,5 @@
 import axios from 'axios';
 
-/*
-====================================================
-  🔥 LPU COIN - ULTIMATE API CONFIGURATION (FIXED)
-====================================================
-*/
-
-// 1. Backend URL Logic
 const PROD_URL = 'https://lpu-coin-backend.onrender.com/api';
 const LOCAL_URL = 'http://localhost:5000/api';
 
@@ -14,30 +7,18 @@ const API_URL = window.location.hostname === 'localhost' || window.location.host
   ? LOCAL_URL 
   : PROD_URL;
 
-// 2. Axios Instance
 const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000, 
-  headers: {
-    'Content-Type': 'application/json',
-  }
+  timeout: 60000, // ⏳ Render ko jagane ke liye 60s chahiye
+  headers: { 'Content-Type': 'application/json' }
 });
 
-// 🔐 JWT Token Interceptor
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
 
-/* ====================================================
-   1️⃣ AUTHENTICATION APIs
-==================================================== */
 export const authAPI = {
   getFaceData: (email) => api.post('/auth/get-face-data', { email }),
   sendOTP: (email) => api.post('/auth/send-otp', { email }),
@@ -49,9 +30,6 @@ export const authAPI = {
   getMerchantInfo: (id) => api.get(`/auth/merchant/${id}`),
 };
 
-/* ====================================================
-   2️⃣ WALLET APIs
-==================================================== */
 export const walletAPI = {
   addMoney: (amount) => api.post('/wallet/add-money', { amount }),
   getBalance: () => api.get('/wallet/balance'),
@@ -59,18 +37,12 @@ export const walletAPI = {
   getTransactions: () => api.get('/wallet/transactions'),
 };
 
-/* ====================================================
-   3️⃣ MERCHANT APIs (ERROR FIX: Exporting correctly now)
-==================================================== */
 export const merchantAPI = {
   generateQRCode: () => api.get('/merchant/qr-code'),
   requestSettlement: (amount) => api.post('/merchant/settlement-request', { amount }),
   getDashboard: () => api.get('/merchant/dashboard'),
 };
 
-/* ====================================================
-   4️⃣ ADMIN APIs
-==================================================== */
 export const adminAPI = {
   getDashboard: () => api.get('/admin/dashboard'),
   getAllUsers: () => api.get('/admin/users'),
@@ -79,9 +51,6 @@ export const adminAPI = {
   rejectSettlement: (id, reason) => api.post(`/admin/settlements/${id}/reject`, { reason }),
 };
 
-/* ====================================================
-   5️⃣ MESS APIs
-==================================================== */
 export const messAPI = {
   getMeals: () => api.get('/mess/all'),
   addMeal: (data) => api.post('/mess/add', data),

@@ -3,7 +3,7 @@ import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
-// --- 1. EMAIL CONFIGURATION (Cloud Optimized) ---
+// --- 1. GMAIL CONFIGURATION (Cloud Optimized Fix) ---
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   host: 'smtp.gmail.com',
@@ -14,7 +14,8 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS || 'htjsgoxpzvalgtth' 
   },
   tls: {
-    rejectUnauthorized: false
+    // Yeh line cloud server (Render) ke liye sabse zaroori hai
+    rejectUnauthorized: false 
   }
 });
 
@@ -22,7 +23,7 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'lpu_coin_2024', { expiresIn: '7d' });
 };
 
-// --- 2. SEND OTP (Non-Blocking - FAST RESPONSE) ---
+// --- 2. SEND OTP (Immediate Response + Background Mail) ---
 export const sendOTP = async (req, res) => {
   try {
     const { email } = req.body;
@@ -30,121 +31,91 @@ export const sendOTP = async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // 🔥 STEP 1: OTP को तुरंत डेटाबेस में सेव करें (यह बहुत तेज़ है)
+    // OTP database mein save karein
     await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
 
-    // 🔥 STEP 2: फ्रंटएंड को तुरंत जवाब भेजें (User को इंतज़ार नहीं करना पड़ेगा)
+    // 🔥 RESPONSE TURANT BHEJEIN (Frontend hang nahi hoga)
     res.status(200).json({ success: true, message: "OTP Dispatched" });
 
-    // 🔥 STEP 3: ईमेल पीछे (Background) में भेजें
+    // 📧 Background mein email bhejte rahein
     const mailOptions = {
-      from: '"LPU COIN Official" <rahuljangu01@gmail.com>',
+      from: `"LPU COIN Support" <${process.env.EMAIL_USER || 'rahuljangu01@gmail.com'}>`,
       to: email,
-      subject: 'LPU COIN - Verification Code',
-      html: `<div style="font-family:sans-serif; border:2px solid #3b82f6; padding:20px; border-radius:10px; background:#f8fafc;">
-              <h2 style="color:#1e40af;">AUTHENTICATION PROTOCOL</h2>
-              <p style="color:#475569;">Your one-time security code for LPU COIN is:</p>
-              <div style="background:#1e293b; color:#3b82f6; padding:20px; text-align:center; font-size:32px; font-weight:bold; letter-spacing:8px; border-radius:8px;">${otp}</div>
-              <p style="color:#64748b; font-size:11px; margin-top:20px;">This code is valid for 5 minutes. If you didn't request this, ignore this email.</p>
+      subject: 'LPU COIN - Security Verification',
+      html: `<div style="font-family:sans-serif; padding:20px; border:1px solid #3b82f6; border-radius:10px;">
+              <h2 style="color:#1e40af;">AUTHENTICATION HUB</h2>
+              <p>Your security code is:</p>
+              <div style="background:#f1f5f9; padding:20px; text-align:center; font-size:30px; font-weight:bold; letter-spacing:10px;">${otp}</div>
+              <p style="color:gray; font-size:10px; margin-top:20px;">Requested from Render Cloud Node.</p>
             </div>`
     };
 
-    // No 'await' here so it doesn't block the response
-    transporter.sendMail(mailOptions).then(() => {
-      console.log(`🚀 OTP Email successfully sent to: ${email}`);
-    }).catch((err) => {
-      console.error(`❌ Mailer Error for ${email}:`, err.message);
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) console.log("❌ MAIL ERROR ON CLOUD:", error.message);
+      else console.log("🚀 MAIL SENT FROM CLOUD:", info.response);
     });
 
   } catch (error) {
     console.error("🔥 Global sendOTP Error:", error.message);
-    if (!res.headersSent) {
-      res.status(500).json({ message: "System busy. Retry in a moment." });
-    }
+    if (!res.headersSent) res.status(500).json({ message: "Server error" });
   }
 };
 
-// --- 3. CHECK EMAIL ---
+// --- REST OF THE CONTROLLER (Keep it as it is) ---
 export const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
     const userExists = await User.findOne({ email });
-    if (userExists) {
-      return res.status(400).json({ success: false, message: "IDENTITY ALREADY REGISTERED" });
-    }
-    res.status(200).json({ success: true, message: "Email Available" });
+    if (userExists) return res.status(400).json({ success: false, message: "IDENTITY ALREADY REGISTERED" });
+    res.status(200).json({ success: true });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
-// --- 4. FINAL REGISTRATION ---
 export const register = async (req, res) => {
   try {
     const { name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp } = req.body;
     const otpRecord = await Otp.findOne({ email, otp });
-    if (!otpRecord) return res.status(400).json({ message: "INVALID OR EXPIRED OTP" });
-
-    const user = await User.create({
-      name, email, password,
-      role: role || 'user',
-      collegeId: collegeId || "NOT-SET",
-      phoneNumber: phoneNumber || "NOT-SET",
-      faceDescriptor: faceDescriptor || []
-    });
-
+    if (!otpRecord) return res.status(400).json({ message: "INVALID OTP" });
+    const user = await User.create({ name, email, password, role: role || 'user', collegeId: collegeId || "NOT-SET", phoneNumber: phoneNumber || "NOT-SET", faceDescriptor: faceDescriptor || [] });
     await Otp.deleteOne({ _id: otpRecord._id });
     res.status(201).json({ success: true, token: generateToken(user._id, user.role), user });
   } catch (error) { res.status(400).json({ message: error.message }); }
 };
 
-// --- 5. LOGIN ---
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
     if (email === 'admin@lpu.in' && password === 'Admin123') {
        let adminUser = await User.findOne({ email });
-       if (!adminUser) adminUser = await User.create({ name: 'SYSTEM ADMIN', email, password, role: 'admin' });
+       if (!adminUser) adminUser = await User.create({ name: 'ADMIN', email, password, role: 'admin' });
        return res.status(200).json({ success: true, token: generateToken(adminUser._id, 'admin'), user: adminUser });
     }
     const user = await User.findOne({ email });
-    if (!user || user.password !== password) return res.status(401).json({ message: 'IDENTITY VERIFICATION FAILED' });
+    if (!user || user.password !== password) return res.status(401).json({ message: 'FAILED' });
     res.status(200).json({ success: true, token: generateToken(user._id, user.role), user });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
-// --- 6. BIOMETRICS & PROFILE ---
 export const getFaceData = async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "Not found" });
     res.status(200).json({ success: true, faceDescriptor: user.faceDescriptor });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const getMe = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    res.status(200).json({ success: true, user });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  try { const user = await User.findById(req.user.id); res.status(200).json({ success: true, user }); } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const updateMe = async (req, res) => {
-  try {
-    const user = await User.findByIdAndUpdate(req.user.id, req.body, { new: true });
-    res.status(200).json({ success: true, user });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  try { const user = await User.findByIdAndUpdate(req.user.id, req.body, { new: true }); res.status(200).json({ success: true, user }); } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const forgotPassword = async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.body.email });
-    if (!user) return res.status(404).json({ message: "Email not registered" });
-    res.status(200).json({ success: true, message: "Reset protocol initiated" });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+  try { const user = await User.findOne({ email: req.body.email }); if (!user) return res.status(404).json({ message: "Not found" }); res.status(200).json({ success: true, message: "Reset link sent" }); } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const getMerchantInfo = async (req, res) => {
-  try {
-    const merchant = await User.findById(req.params.id).select('name');
-    res.status(200).json({ success: true, merchant });
-  } catch (e) { res.status(404).json({ message: "Not Found" }); }
+  try { const merchant = await User.findById(req.params.id).select('name'); res.status(200).json({ success: true, merchant }); } catch (e) { res.status(404).json({ message: "Not Found" }); }
 };
