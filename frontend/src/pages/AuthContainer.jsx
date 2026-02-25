@@ -96,19 +96,27 @@ export default function AuthContainer() {
 
   const stopCamera = () => { if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop()); setIsScanning(false); };
 
-  const handleSendOTP = async (e) => {
+  // handleSendOTP function ko AuthContainer.jsx mein isse badlein
+const handleSendOTP = async (e) => {
   e.preventDefault();
   setError('');
+  
+  // Basic validation
+  if (!formData.email.includes('@')) {
+    setError("INVALID EMAIL FORMAT");
+    return;
+  }
+
   try {
     const res = await authAPI.sendOTP(formData.email);
-    // Success hone par hi next step par jao
-    if (res.status === 200) {
-      setRegStep(2);
+    // Agar status 200 hai (Success)
+    if (res.status === 200 || res.data.success) {
+      setRegStep(2); // OTP interface par le jao
     }
   } catch (e) {
-    console.error("Backend response error:", e);
-    // Render logs ka error yahan dikhega
-    const msg = e.response?.data?.message || "SERVICE BUSY... PLEASE REFRESH";
+    console.error("Connection Lost:", e);
+    // Agar Render server hibernate (so raha) hai
+    const msg = e.response?.data?.message || "SERVER WAKING UP... RETRY IN 15s";
     setError(msg);
   }
 };

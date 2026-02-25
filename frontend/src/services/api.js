@@ -1,23 +1,55 @@
 import axios from 'axios';
 
+/*
+====================================================
+  🔥 LPU COIN - BULLETPROOF API CONFIGURATION
+====================================================
+*/
+
+// 1. URLs Define karein (Hardcoded for maximum reliability)
 const PROD_URL = 'https://lpu-coin-backend.onrender.com/api';
 const LOCAL_URL = 'http://localhost:5000/api';
 
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-  ? LOCAL_URL 
-  : PROD_URL;
+// 2. Smart Detection Logic
+const getBaseURL = () => {
+  try {
+    const host = window.location.hostname;
+    if (host === 'localhost' || host === '127.0.0.1') {
+      return LOCAL_URL;
+    }
+  } catch (e) {
+    // If window is not defined (SSR or edge cases)
+    return PROD_URL;
+  }
+  return PROD_URL;
+};
 
+const API_URL = getBaseURL();
+
+// 3. Axios Instance Create
 const api = axios.create({
-  baseURL: API_URL,
-  timeout: 60000, // ⏳ Render ko jagane ke liye 60s chahiye
-  headers: { 'Content-Type': 'application/json' }
+  baseURL: API_URL, // Ab ye kabhi 'undefined' nahi hoga
+  timeout: 60000,   // 60 seconds (Render ko jaghne ka waqt dein)
+  headers: {
+    'Content-Type': 'application/json',
+  }
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
+// 🔐 JWT Token Interceptor
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
+/* ====================================================
+   📦 API EXPORTS (Sare modules integrated)
+==================================================== */
 
 export const authAPI = {
   getFaceData: (email) => api.post('/auth/get-face-data', { email }),
