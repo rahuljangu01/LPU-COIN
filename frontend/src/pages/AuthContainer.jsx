@@ -97,19 +97,21 @@ export default function AuthContainer() {
   const stopCamera = () => { if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop()); setIsScanning(false); };
 
   const handleSendOTP = async (e) => {
-    e.preventDefault();
-    setError('');
-    try {
-      // 🔥 Axios using centralized API logic
-      const res = await authAPI.sendOTP(formData.email);
-      if (res.status === 200 || res.status === 201) {
-        setRegStep(2);
-      }
-    } catch (e) { 
-      const msg = e.response?.data?.message || "NEXUS OFFLINE... PLEASE REFRESH";
-      setError(msg); 
+  e.preventDefault();
+  setError('');
+  try {
+    const res = await authAPI.sendOTP(formData.email);
+    // Success hone par hi next step par jao
+    if (res.status === 200) {
+      setRegStep(2);
     }
-  };
+  } catch (e) {
+    console.error("Backend response error:", e);
+    // Render logs ka error yahan dikhega
+    const msg = e.response?.data?.message || "SERVICE BUSY... PLEASE REFRESH";
+    setError(msg);
+  }
+};
 
   return (
     <div className="h-[100dvh] w-screen bg-[#010409] flex items-center justify-center p-6 overflow-hidden font-sans">
