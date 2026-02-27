@@ -3,17 +3,18 @@ import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
-// --- 1. GMAIL CONFIGURATION (Cloud Optimized for Render) ---
+// --- 1. GMAIL CONFIGURATION (Cloud Port 587 Fix) ---
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,      // Port 587 is most stable on Cloud providers
-  secure: false,  // false for 587
+  port: 587,      // 🔥 465 cloud par block hota hai, 587 use karein
+  secure: false,  // 🔥 587 ke liye hamesha false rakhein
   auth: {
-    user: process.env.EMAIL_USER || 'rahuljangu01@gmail.com', 
-    pass: process.env.EMAIL_PASS || 'htjsgoxpzvalgtth' 
+    user: process.env.EMAIL_USER, 
+    pass: process.env.EMAIL_PASS 
   },
   tls: {
-    rejectUnauthorized: false // Bypasses self-signed certificate errors on cloud
+    // Yeh Render ke shared IP issues ko bypass karta hai
+    rejectUnauthorized: false 
   }
 });
 
@@ -21,7 +22,7 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'lpu_coin_2024', { expiresIn: '7d' });
 };
 
-// --- 2. SEND OTP (FAST RESPONSE LOGIC) ---
+// --- 2. SEND OTP (Wait for Delivery) ---
 export const sendOTP = async (req, res) => {
   try {
     const { email } = req.body;
@@ -29,55 +30,60 @@ export const sendOTP = async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // Database mein OTP save karein (Yeh 1 second se kam leta hai)
+    // Save to DB
     await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
 
-    // 🔥 V.IMP: Response turant bhej do taaki Vercel par OTP interface khul jaye
-    res.status(200).json({ success: true, message: "OTP Dispatched" });
-
-    // 📧 Ab background mein email bhejte raho
     const mailOptions = {
-      from: `"LPU COIN Official" <${process.env.EMAIL_USER || 'rahuljangu01@gmail.com'}>`,
+      from: `"LPU COIN Support" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: 'LPU COIN - Identity Verification',
+      subject: 'LPU COIN Identity Verification Code',
       html: `
-        <div style="font-family: sans-serif; padding: 25px; border: 1px solid #3b82f6; border-radius: 15px; background-color: #f8fafc;">
+        <div style="font-family: sans-serif; border: 2px solid #3b82f6; padding: 25px; border-radius: 15px; background-color: #f8fafc;">
           <h2 style="color: #1e40af; margin-bottom: 10px;">IDENTITY ENROLLMENT</h2>
           <p style="color: #475569;">Your one-time security code is:</p>
           <div style="background: #1e293b; color: #3b82f6; padding: 15px; border-radius: 10px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px;">
             ${otp}
           </div>
-          <p style="color: #64748b; font-size: 11px; margin-top: 20px;">Requested from Render Node Support.</p>
+          <p style="color: #64748b; font-size: 11px; margin-top: 20px;">Requested via Render Cloud Protocol.</p>
         </div>`
     };
 
-    transporter.sendMail(mailOptions, (error, info) => {
-      if (error) console.log("❌ MAIL ERROR ON CLOUD:", error.message);
-      else console.log("✅ MAIL SENT FROM CLOUD:", info.response);
-    });
+    // Yahan hum wait karenge taaki timeout error pakda ja sake
+    console.log(`📨 Attempting cloud delivery to: ${email}`);
+    
+    try {
+      await transporter.sendMail(mailOptions);
+      console.log(`✅ Success: OTP sent from Render to ${email}`);
+      return res.status(200).json({ success: true, message: "OTP Sent" });
+    } catch (mailError) {
+      console.error("❌ CLOUD MAIL FAIL:", mailError.message);
+      // Agar email fail hua toh interface ko aage mat badhne do
+      return res.status(500).json({ 
+        message: "Email service blocked by Google Cloud Security. Please check App Password." 
+      });
+    }
 
   } catch (error) {
-    console.error("🔥 Global sendOTP Error:", error.message);
-    if (!res.headersSent) res.status(500).json({ message: "System Busy" });
+    console.error("🔥 Global Error:", error);
+    res.status(500).json({ message: "System Error" });
   }
 };
 
-// --- 3. CHECK EMAIL ---
+// ... baaki functions wahi rakhein jo aapke paas the (checkEmail, register, login, etc.)
 export const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
     const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ success: false, message: "IDENTITY ALREADY REGISTERED" });
+    if (userExists) return res.status(400).json({ success: false, message: "ALREADY REGISTERED" });
     res.status(200).json({ success: true });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
-// --- 4. FINAL REGISTRATION ---
 export const register = async (req, res) => {
   try {
     const { name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp } = req.body;
     const otpRecord = await Otp.findOne({ email, otp });
-    if (!otpRecord) return res.status(400).json({ message: "INVALID OR EXPIRED OTP" });
+    if (!otpRecord) return res.status(400).json({ message: "INVALID OTP" });
 
     const user = await User.create({
       name, email, password,
@@ -92,7 +98,6 @@ export const register = async (req, res) => {
   } catch (error) { res.status(400).json({ message: error.message }); }
 };
 
-// --- 5. LOGIN ---
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -107,7 +112,6 @@ export const login = async (req, res) => {
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
-// --- 6. OTHER EXPORTS ---
 export const getFaceData = async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
@@ -133,8 +137,8 @@ export const updateMe = async (req, res) => {
 export const forgotPassword = async (req, res) => {
   try {
     const user = await User.findOne({ email: req.body.email });
-    if (!user) return res.status(404).json({ message: "Not found" });
-    res.status(200).json({ success: true, message: "Sent" });
+    if (!user) return res.status(404).json({ message: "Not registered" });
+    res.status(200).json({ success: true, message: "Reset protocol initiated" });
   } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
