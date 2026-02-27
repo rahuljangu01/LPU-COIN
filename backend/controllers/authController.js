@@ -1,10 +1,24 @@
 import User from '../models/User.js';
 import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
-import { Resend } from 'resend'; 
+import nodemailer from 'nodemailer';
 
-// --- 🚀 RESEND API CONFIG ---
-const resend = new Resend(process.env.RESEND_API_KEY); 
+// --- 🚀 UNIVERSAL GMAIL CONFIG (Render Cloud Optimized) ---
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // 587 ke liye false
+  auth: {
+    user: process.env.EMAIL_USER, // rahuljangu01@gmail.com
+    pass: process.env.EMAIL_PASS  // 16-digit App Password
+  },
+  // 🔥 Yeh settings IPv6 error aur Blocked connection ko theek karti hain
+  family: 4, 
+  tls: {
+    rejectUnauthorized: false,
+    ciphers: 'SSLv3'
+  }
+});
 
 const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'lpu_coin_2024', { expiresIn: '7d' });
@@ -18,35 +32,47 @@ export const sendOTP = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
 
-    // FAST UI RESPONSE: Interface turant khulega
+    // FAST UI RESPONSE: Interface turant badal jayega
     res.status(200).json({ success: true, message: "OTP Dispatched" });
 
-    // Background Email via Resend API
-    resend.emails.send({
-      from: 'LPU COIN <onboarding@resend.dev>',
+    const mailOptions = {
+      from: `"LPU COIN Support" <${process.env.EMAIL_USER}>`,
       to: email,
-      subject: 'LPU COIN - Identity Code',
-      html: `<strong>Your OTP: ${otp}</strong>`
-    }).then(() => {
-      console.log("✅ RESEND SUCCESS: Mail delivered to", email);
-    }).catch((err) => {
-      console.log("❌ RESEND ERROR:", err.message);
+      subject: 'LPU COIN - Identity Verification',
+      html: `
+        <div style="font-family: sans-serif; padding: 20px; border: 2px solid #3b82f6; border-radius: 15px; background-color: #f8fafc;">
+          <h2 style="color: #1e40af; margin-bottom: 10px;">SECURITY PROTOCOL</h2>
+          <p>Your one-time security code is:</p>
+          <div style="background: #1e293b; color: #3b82f6; padding: 15px; border-radius: 10px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px;">
+            ${otp}
+          </div>
+          <p style="color: #64748b; font-size: 11px; margin-top: 20px;">Securely delivered via Render Node.</p>
+        </div>`
+    };
+
+    // Background Dispatch
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.log("❌ GMAIL SMTP ERROR:", error.message);
+      } else {
+        console.log("🚀 UNIVERSAL SUCCESS: Mail delivered to", email);
+      }
     });
 
   } catch (error) {
     console.error("🔥 Server error:", error.message);
-    if (!res.headersSent) res.status(500).json({ message: "System Error" });
+    if (!res.headersSent) res.status(500).json({ message: "Server Busy" });
   }
 };
 
-// ... baaki register/login functions pehle jaise hi niche copy-paste kar dein
+// ... baaki register/login logic wahi rakhein jo aapke paas thi
 export const checkEmail = async (req, res) => {
-  try {
-    const { email } = req.body;
-    const userExists = await User.findOne({ email });
-    if (userExists) return res.status(400).json({ success: false, message: "ALREADY REGISTERED" });
-    res.status(200).json({ success: true });
-  } catch (error) { res.status(500).json({ message: error.message }); }
+    try {
+      const { email } = req.body;
+      const userExists = await User.findOne({ email });
+      if (userExists) return res.status(400).json({ success: false, message: "ALREADY REGISTERED" });
+      res.status(200).json({ success: true });
+    } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const register = async (req, res) => {
@@ -54,7 +80,15 @@ export const register = async (req, res) => {
     const { name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp } = req.body;
     const otpRecord = await Otp.findOne({ email, otp });
     if (!otpRecord) return res.status(400).json({ message: "INVALID OTP" });
-    const user = await User.create({ name, email, password, role: role || 'user', collegeId: collegeId || "NOT-SET", phoneNumber: phoneNumber || "NOT-SET", faceDescriptor: faceDescriptor || [] });
+
+    const user = await User.create({
+      name, email, password,
+      role: role || 'user',
+      collegeId: collegeId || "NOT-SET",
+      phoneNumber: phoneNumber || "NOT-SET",
+      faceDescriptor: faceDescriptor || []
+    });
+
     await Otp.deleteOne({ _id: otpRecord._id });
     res.status(201).json({ success: true, token: generateToken(user._id, user.role), user });
   } catch (error) { res.status(400).json({ message: error.message }); }
