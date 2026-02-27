@@ -3,21 +3,18 @@ import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
-// --- 🚀 UNIVERSAL GMAIL CONFIG (Render Cloud Optimized) ---
+// --- 🚀 FINAL UNIVERSAL GMAIL CONFIG (Forced IPv4) ---
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // 587 ke liye false
+  port: 465, // Port 465 is very stable for Gmail
+  secure: true, // Port 465 ke liye true
   auth: {
     user: process.env.EMAIL_USER, // rahuljangu01@gmail.com
-    pass: process.env.EMAIL_PASS  // 16-digit App Password
+    pass: process.env.EMAIL_PASS  // Naya 16-digit App Password (BINA SPACE KE)
   },
-  // 🔥 Yeh settings IPv6 error aur Blocked connection ko theek karti hain
-  family: 4, 
-  tls: {
-    rejectUnauthorized: false,
-    ciphers: 'SSLv3'
-  }
+  // 🔥 IMPORTANT: Yeh line Render ke network errors (ENETUNREACH) ko khatam kar degi
+  connectionTimeout: 10000,
+  family: 4 
 });
 
 const generateToken = (id, role) => {
@@ -32,25 +29,25 @@ export const sendOTP = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
 
-    // FAST UI RESPONSE: Interface turant badal jayega
+    // Pehle frontend ko free kar do
     res.status(200).json({ success: true, message: "OTP Dispatched" });
 
     const mailOptions = {
-      from: `"LPU COIN Support" <${process.env.EMAIL_USER}>`,
+      from: `"LPU COIN Official" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: 'LPU COIN - Identity Verification',
       html: `
-        <div style="font-family: sans-serif; padding: 20px; border: 2px solid #3b82f6; border-radius: 15px; background-color: #f8fafc;">
-          <h2 style="color: #1e40af; margin-bottom: 10px;">SECURITY PROTOCOL</h2>
-          <p>Your one-time security code is:</p>
-          <div style="background: #1e293b; color: #3b82f6; padding: 15px; border-radius: 10px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px;">
+        <div style="font-family: sans-serif; padding: 20px; border: 2px solid #3b82f6; border-radius: 10px; background-color: #f8fafc;">
+          <h2 style="color: #1e40af;">SECURITY HUB</h2>
+          <p>Your security code is:</p>
+          <div style="background: #1e293b; color: #3b82f6; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 8px; border-radius: 8px;">
             ${otp}
           </div>
-          <p style="color: #64748b; font-size: 11px; margin-top: 20px;">Securely delivered via Render Node.</p>
+          <p style="color: #64748b; font-size: 11px; margin-top: 20px;">Securely dispatched via LPU-COIN Cloud Service.</p>
         </div>`
     };
 
-    // Background Dispatch
+    // Background mein email bhejte raho
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         console.log("❌ GMAIL SMTP ERROR:", error.message);
@@ -60,19 +57,18 @@ export const sendOTP = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("🔥 Server error:", error.message);
     if (!res.headersSent) res.status(500).json({ message: "Server Busy" });
   }
 };
 
-// ... baaki register/login logic wahi rakhein jo aapke paas thi
+// ... baaki register/login logic wahi rakhein (checkEmail, register, login, getFaceData, etc.)
 export const checkEmail = async (req, res) => {
-    try {
-      const { email } = req.body;
-      const userExists = await User.findOne({ email });
-      if (userExists) return res.status(400).json({ success: false, message: "ALREADY REGISTERED" });
-      res.status(200).json({ success: true });
-    } catch (error) { res.status(500).json({ message: error.message }); }
+  try {
+    const { email } = req.body;
+    const userExists = await User.findOne({ email });
+    if (userExists) return res.status(400).json({ success: false, message: "IDENTITY ALREADY REGISTERED" });
+    res.status(200).json({ success: true });
+  } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const register = async (req, res) => {
@@ -80,15 +76,7 @@ export const register = async (req, res) => {
     const { name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp } = req.body;
     const otpRecord = await Otp.findOne({ email, otp });
     if (!otpRecord) return res.status(400).json({ message: "INVALID OTP" });
-
-    const user = await User.create({
-      name, email, password,
-      role: role || 'user',
-      collegeId: collegeId || "NOT-SET",
-      phoneNumber: phoneNumber || "NOT-SET",
-      faceDescriptor: faceDescriptor || []
-    });
-
+    const user = await User.create({ name, email, password, role: role || 'user', collegeId: collegeId || "NOT-SET", phoneNumber: phoneNumber || "NOT-SET", faceDescriptor: faceDescriptor || [] });
     await Otp.deleteOne({ _id: otpRecord._id });
     res.status(201).json({ success: true, token: generateToken(user._id, user.role), user });
   } catch (error) { res.status(400).json({ message: error.message }); }
