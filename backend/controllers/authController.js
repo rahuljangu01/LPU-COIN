@@ -3,15 +3,12 @@ import Otp from '../models/Otp.js';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
 
-// --- 1. GMAIL CONFIGURATION (Cloud Optimized) ---
+// --- 1. GMAIL CONFIGURATION (The Most Stable Cloud Setup) ---
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  service: 'gmail', // Let nodemailer handle port/host
   auth: {
     user: process.env.EMAIL_USER || 'rahuljangu01@gmail.com', 
     pass: process.env.EMAIL_PASS || 'htjsgoxpzvalgtth' 
-  },
-  tls: {
-    rejectUnauthorized: false // Cloud connectivity ke liye zaroori
   }
 });
 
@@ -19,52 +16,53 @@ const generateToken = (id, role) => {
   return jwt.sign({ id, role }, process.env.JWT_SECRET || 'lpu_coin_2024', { expiresIn: '7d' });
 };
 
-// --- 2. SEND OTP (Strict Await Version) ---
+// --- 2. SEND OTP (Strict Await - Ensures delivery) ---
 export const sendOTP = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log("📨 Node attempting to send mail to:", email);
+
     if (!email) return res.status(400).json({ message: "Email required" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     
-    // OTP DB mein save karein
+    // Save to Database
     await Otp.findOneAndUpdate({ email }, { otp }, { upsert: true, new: true });
 
     const mailOptions = {
-      from: `"LPU COIN Official" <${process.env.EMAIL_USER || 'rahuljangu01@gmail.com'}>`,
+      from: `"LPU COIN Support" <${process.env.EMAIL_USER || 'rahuljangu01@gmail.com'}>`,
       to: email,
-      subject: 'LPU COIN - Identity Verification',
+      subject: 'Verification Code - LPU COIN',
       html: `
-        <div style="font-family:sans-serif; padding:20px; border:2px solid #3b82f6; border-radius:10px;">
-          <h2 style="color:#1e40af;">AUTHENTICATION PROTOCOL</h2>
-          <p>Your security code is:</p>
-          <div style="background:#f1f5f9; padding:20px; text-align:center; font-size:30px; font-weight:bold; letter-spacing:10px;">${otp}</div>
-          <p style="color:gray; font-size:10px; margin-top:20px;">Render Cloud System Security.</p>
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #3b82f6; border-radius: 10px;">
+          <h2 style="color: #1e40af;">Identity Verification</h2>
+          <p>Your one-time security code is:</p>
+          <div style="background: #f1f5f9; padding: 15px; text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 5px;">
+            ${otp}
+          </div>
         </div>`
     };
 
-    // 🔥 V.IMP: Ab hum wait karenge jab tak mail na nikal jaye
-    console.log("📨 Attempting to send mail via Render...");
-    
+    // 🔥 V.IMP: Wait for Google to confirm dispatch
     try {
       await transporter.sendMail(mailOptions);
-      console.log("🚀 Mail accepted by SMTP server!");
-      return res.status(200).json({ success: true, message: "OTP Sent Successfully" });
+      console.log("🚀 Email accepted by Google!");
+      return res.status(200).json({ success: true, message: "OTP Dispatched Successfully" });
     } catch (mailError) {
-      console.error("❌ NODEMAILER FAIL:", mailError.message);
+      console.error("❌ Gmail Error:", mailError.message);
       return res.status(500).json({ 
         success: false, 
-        message: "Email Blocked by Google Security. Please check Render Logs." 
+        message: "Gmail Blocked Render Server. Check Security Alert." 
       });
     }
 
   } catch (error) {
-    console.error("🔥 Server Error:", error.message);
-    res.status(500).json({ message: "Internal server busy" });
+    console.error("🔥 Global sendOTP Error:", error.message);
+    res.status(500).json({ message: "Internal Server Busy" });
   }
 };
 
-// --- REST OF THE FUNCTIONS (KEEP SAME) ---
+// --- Baaki functions (register, login, etc.) same rahega ---
 export const checkEmail = async (req, res) => {
   try {
     const { email } = req.body;
@@ -79,7 +77,15 @@ export const register = async (req, res) => {
     const { name, email, password, role, collegeId, phoneNumber, faceDescriptor, otp } = req.body;
     const otpRecord = await Otp.findOne({ email, otp });
     if (!otpRecord) return res.status(400).json({ message: "INVALID OTP" });
-    const user = await User.create({ name, email, password, role: role || 'user', collegeId: collegeId || "NOT-SET", phoneNumber: phoneNumber || "NOT-SET", faceDescriptor: faceDescriptor || [] });
+
+    const user = await User.create({
+      name, email, password,
+      role: role || 'user',
+      collegeId: collegeId || "NOT-SET",
+      phoneNumber: phoneNumber || "NOT-SET",
+      faceDescriptor: faceDescriptor || []
+    });
+
     await Otp.deleteOne({ _id: otpRecord._id });
     res.status(201).json({ success: true, token: generateToken(user._id, user.role), user });
   } catch (error) { res.status(400).json({ message: error.message }); }
@@ -116,7 +122,7 @@ export const updateMe = async (req, res) => {
 };
 
 export const forgotPassword = async (req, res) => {
-  try { const user = await User.findOne({ email: req.body.email }); if (!user) return res.status(404).json({ message: "Not found" }); res.status(200).json({ success: true, message: "Sent" }); } catch (error) { res.status(500).json({ message: error.message }); }
+  try { const user = await User.findOne({ email: req.body.email }); if (!user) return res.status(404).json({ message: "Not registered" }); res.status(200).json({ success: true, message: "Sent" }); } catch (error) { res.status(500).json({ message: error.message }); }
 };
 
 export const getMerchantInfo = async (req, res) => {
